@@ -1,0 +1,1 @@
+input_sales_path = BASE_PATH / "EBO SALES FOLDER" / "EBO SALES DATA.xlsx"
