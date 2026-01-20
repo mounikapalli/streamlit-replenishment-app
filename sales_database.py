@@ -19,7 +19,7 @@ DB_FILE = DB_DIR / "sales_data.db"
 
 
 # Caching decorator for database operations
-@st.cache_data(ttl=7200, show_spinner="📊 Loading data...")  # Cache for 2 hours
+@st.cache_data(ttl=7200, show_spinner=False)  # Cache for 2 hours, no spinner
 def _cached_load_all_data():
     """Cached version of loading all data"""
     db = SalesDatabase()
@@ -76,7 +76,7 @@ def _cached_get_data_summary():
         return {}
 
 
-@st.cache_data(ttl=7200, show_spinner="⚡ Loading quick stats...")  # Cache for 2 hours
+@st.cache_data(ttl=7200, show_spinner=False)  # Cache for 2 hours, no spinner
 def _cached_get_quick_summary():
     """Ultra-fast summary - only row count and date range"""
     db = SalesDatabase()
