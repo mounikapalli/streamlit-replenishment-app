@@ -2335,10 +2335,25 @@ def check_login():
         st.session_state.logged_in = False
     return st.session_state.logged_in
 
-STORAGE_DIR = Path("d:/DATA TILL DATE/Desktop/.streamlit_data")
-STORAGE_DIR.mkdir(exist_ok=True)
-DATA_FILE = STORAGE_DIR / "persisted_data.pkl"
-HISTORY_FILE = STORAGE_DIR / "upload_history.pkl"
+# Use session state for storage in Streamlit Cloud (can't create directories)
+# For local development, you can uncomment the lines below
+# STORAGE_DIR = Path("d:/DATA TILL DATE/Desktop/.streamlit_data")
+# STORAGE_DIR.mkdir(exist_ok=True)
+# DATA_FILE = STORAGE_DIR / "persisted_data.pkl"
+# HISTORY_FILE = STORAGE_DIR / "upload_history.pkl"
+
+# Use temporary directory if available, otherwise use session state
+try:
+    import tempfile
+    STORAGE_DIR = Path(tempfile.gettempdir()) / ".streamlit_data"
+    STORAGE_DIR.mkdir(exist_ok=True)
+    DATA_FILE = STORAGE_DIR / "persisted_data.pkl"
+    HISTORY_FILE = STORAGE_DIR / "upload_history.pkl"
+except:
+    # Fallback: use session state storage
+    STORAGE_DIR = None
+    DATA_FILE = None
+    HISTORY_FILE = None
 
 def load_from_disk(filename):
     """Load data from disk"""
