@@ -19,7 +19,7 @@ DB_FILE = DB_DIR / "sales_data.db"
 
 
 # Caching decorator for database operations
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+@st.cache_data(ttl=7200, show_spinner="📊 Loading data...")  # Cache for 2 hours
 def _cached_load_all_data():
     """Cached version of loading all data"""
     db = SalesDatabase()
@@ -35,11 +35,80 @@ def _cached_load_all_data():
         return None
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=7200, show_spinner=False)  # Disable spinner for faster feel
 def _cached_get_data_summary():
-    """Cached version of getting summary"""
+    """Cached version of getting summary - optimized with single query"""
     db = SalesDatabase()
-    return db.get_data_summary()
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Single optimized query instead of multiple queries
+        cursor.execute("""
+        SELECT 
+            COUNT(*) as total_rows,
+            COUNT(DISTINCT store) as total_stores,
+            COUNT(DISTINCT sku) as total_skus,
+            MIN(date) as min_date,
+            MAX(date) as max_date,
+            SUM(quantity) as total_quantity,
+            SUM(amount) as total_amount
+        FROM sales_data
+        """)
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                "total_rows": result[0] or 0,
+                "total_stores": result[1] or 0,
+                "total_skus": result[2] or 0,
+                "min_date": result[3],
+                "max_date": result[4],
+                "total_quantity": result[5] or 0,
+                "total_amount": result[6] or 0
+            }
+        return {}
+        
+    except Exception as e:
+        logger.error(f"Error getting summary: {str(e)}")
+        return {}
+
+
+@st.cache_data(ttl=7200, show_spinner="⚡ Loading quick stats...")  # Cache for 2 hours
+def _cached_get_quick_summary():
+    """Ultra-fast summary - only row count and date range"""
+    db = SalesDatabase()
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT 
+            COUNT(*) as total_rows,
+            MIN(date) as min_date,
+            MAX(date) as max_date,
+            SUM(amount) as total_amount
+        FROM sales_data
+        LIMIT 1
+        """)
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                "total_rows": result[0] or 0,
+                "min_date": result[1],
+                "max_date": result[2],
+                "total_amount": result[3] or 0
+            }
+        return {}
+        
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        return {}
 
 
 class SalesDatabase:
@@ -262,9 +331,9 @@ class SalesDatabase:
 
 
 def streamlit_database_status():
-    """Display database status in Streamlit"""
-    db = SalesDatabase()
-    summary = db.get_data_summary()
+    """Display database status in Streamlit - uses quick summary for speed"""
+    # Use quick summary for instant display
+    summary = _cached_get_quick_summary()
     
     if summary.get('total_rows', 0) == 0:
         st.info("📊 Database is empty. Upload data to get started.")
@@ -272,24 +341,20 @@ def streamlit_database_status():
     
     st.subheader("📊 Database Summary")
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Total Rows", f"{summary['total_rows']:,}")
     with col2:
-        st.metric("Stores", summary['total_stores'])
-    with col3:
-        st.metric("SKUs", summary['total_skus'])
-    with col4:
         st.metric("Total Amount", f"₹{summary['total_amount']:,.0f}")
+    with col3:
+        date_range = ""
+        if summary['min_date'] and summary['max_date']:
+            date_range = f"{summary['min_date']} to {summary['max_date']}"
+        st.metric("Date Range", date_range or "N/A")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Min Date", summary['min_date'])
-    with col2:
-        st.metric("Max Date", summary['max_date'])
-    
-    # Show upload history
+    # Show upload history (cached separately)
     with st.expander("📜 Upload History"):
+        db = SalesDatabase()
         history = db.get_upload_history()
         if history:
             for record in history:

@@ -46,6 +46,13 @@ try:
 except ImportError:
     DATABASE_AVAILABLE = False
 
+# Import email integration
+try:
+    from email_sales_integration import EmailSalesIntegration, streamlit_email_integration_ui, process_email_sales_data
+    EMAIL_INTEGRATION_AVAILABLE = True
+except ImportError:
+    EMAIL_INTEGRATION_AVAILABLE = False
+
 # Backend API URL
 API_URL = "http://127.0.0.1:8000"
 
@@ -2662,6 +2669,85 @@ def main():
             st.subheader("🗄️ Backend Database Status")
             streamlit_database_status()
             streamlit_data_management()
+            st.markdown("---")
+        
+        # Email Integration Section
+        if EMAIL_INTEGRATION_AVAILABLE:
+            st.markdown("---")
+            st.subheader("📧 Automated Email Sales Collection")
+            
+            with st.expander("⚙️ Configure Email Integration", expanded=False):
+                st.info("📧 Automatically collect daily sales data from emails")
+                
+                email_config = streamlit_email_integration_ui()
+                
+                if email_config.get("email_address") and email_config.get("email_password"):
+                    st.markdown("### 🔄 Fetch Sales Data from Emails")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if st.button("📬 Check Emails Now", key="check_emails"):
+                            with st.spinner("📧 Checking for email attachments..."):
+                                db = SalesDatabase() if DATABASE_AVAILABLE else None
+                                
+                                email_integration = EmailSalesIntegration(
+                                    email_address=email_config["email_address"],
+                                    email_password=email_config["email_password"]
+                                )
+                                
+                                # Fetch emails
+                                emails = email_integration.fetch_sales_emails(
+                                    from_email=email_config.get("sender_email"),
+                                    days_back=email_config.get("days_back", 1),
+                                    subject_keyword=email_config.get("subject_keyword", "Sales")
+                                )
+                                
+                                if emails:
+                                    st.success(f"✅ Found {len(emails)} email(s) with attachments")
+                                    
+                                    all_data = pd.DataFrame()
+                                    
+                                    for email_info in emails:
+                                        st.write(f"📧 {email_info['subject']}")
+                                        
+                                        for attachment in email_info["attachments"]:
+                                            df = email_integration.parse_sales_attachment(
+                                                attachment["data"],
+                                                attachment["filename"]
+                                            )
+                                            
+                                            if df is not None:
+                                                st.write(f"   ✅ {attachment['filename']}: {len(df):,} rows")
+                                                all_data = pd.concat([all_data, df], ignore_index=True)
+                                    
+                                    if not all_data.empty:
+                                        st.success(f"✅ Total records extracted: {len(all_data):,}")
+                                        
+                                        # Show preview
+                                        with st.expander("Preview Data"):
+                                            st.dataframe(all_data.head(10), use_container_width=True)
+                                        
+                                        # Save to database
+                                        if db:
+                                            if db.save_dataframe(all_data, f"email_sales_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
+                                                st.success("✅ Data saved to database!")
+                                else:
+                                    st.warning("❌ No emails found matching your criteria")
+                    
+                    with col2:
+                        st.markdown("**Setup Instructions:**")
+                        st.markdown("""
+                        1. Enter your Gmail address
+                        2. Create App Password at: https://myaccount.google.com/apppasswords
+                        3. Paste App Password (not regular password)
+                        4. Click "Check Emails Now"
+                        
+                        Your stores should send sales data with subject containing "Sales"
+                        """)
+                else:
+                    st.warning("⚠️ Please configure email settings first")
+            
             st.markdown("---")
         
         # File uploaders - Using new multi-upload feature with merge capability
