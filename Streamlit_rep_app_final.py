@@ -2342,21 +2342,16 @@ def check_login():
 # DATA_FILE = STORAGE_DIR / "persisted_data.pkl"
 # HISTORY_FILE = STORAGE_DIR / "upload_history.pkl"
 
-# Use temporary directory if available, otherwise use session state
-try:
-    import tempfile
-    STORAGE_DIR = Path(tempfile.gettempdir()) / ".streamlit_data"
-    STORAGE_DIR.mkdir(exist_ok=True)
-    DATA_FILE = STORAGE_DIR / "persisted_data.pkl"
-    HISTORY_FILE = STORAGE_DIR / "upload_history.pkl"
-except:
-    # Fallback: use session state storage
-    STORAGE_DIR = None
-    DATA_FILE = None
-    HISTORY_FILE = None
+# Use session state for storage in Streamlit Cloud (filesystem is limited)
+# Don't try to create directories on Streamlit Cloud
+STORAGE_DIR = None
+DATA_FILE = None
+HISTORY_FILE = None
 
 def load_from_disk(filename):
     """Load data from disk"""
+    if filename is None:
+        return None
     try:
         if filename.exists():
             with open(filename, 'rb') as f:
@@ -2367,6 +2362,8 @@ def load_from_disk(filename):
 
 def save_to_disk(data, filename):
     """Save data to disk"""
+    if filename is None:
+        return False
     try:
         with open(filename, 'wb') as f:
             pickle.dump(data, f)
