@@ -5,19 +5,45 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 from typing import Optional, Tuple
+import time
+
+# Import progress tracker if available
+try:
+    from progress_tracker import ProcessingProgressTracker, display_processing_progress
+    PROGRESS_TRACKER_AVAILABLE = True
+except ImportError:
+    PROGRESS_TRACKER_AVAILABLE = False
 
 class DataMergeManager:
     """Manage multiple data uploads and merging"""
     
     @staticmethod
     def load_file(uploaded_file) -> Optional[pd.DataFrame]:
-        """Load CSV or Excel file"""
+        """Load CSV or Excel file with progress tracking"""
         try:
-            if uploaded_file.name.endswith('.csv'):
-                return pd.read_csv(uploaded_file)
-            elif uploaded_file.name.endswith(('.xlsx', '.xls')):
-                return pd.read_excel(uploaded_file)
-            return None
+            file_size = uploaded_file.size / (1024 * 1024)  # Convert to MB
+            
+            with st.spinner(f"📂 Loading {uploaded_file.name}..."):
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file)
+                elif uploaded_file.name.endswith(('.xlsx', '.xls')):
+                    df = pd.read_excel(uploaded_file)
+                else:
+                    return None
+                
+                # Show success with details
+                st.success(f"✅ Loaded {uploaded_file.name}")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Rows", f"{len(df):,}")
+                with col2:
+                    st.metric("Columns", len(df.columns))
+                with col3:
+                    st.metric("File Size", f"{file_size:.2f} MB")
+                
+                return df
+            
         except Exception as e:
             st.error(f"Error loading {uploaded_file.name}: {str(e)}")
             return None
@@ -54,7 +80,7 @@ class DataMergeManager:
                        new_df: pd.DataFrame,
                        merge_type: str = "append") -> pd.DataFrame:
         """
-        Merge old and new datasets
+        Merge old and new datasets with progress tracking
         
         Args:
             old_df: Previously uploaded data
@@ -65,9 +91,28 @@ class DataMergeManager:
         if old_df is None or old_df.empty:
             return new_df.copy()
         
+        # Show progress
+        if PROGRESS_TRACKER_AVAILABLE:
+            total_rows = len(old_df) + len(new_df)
+            tracker = ProcessingProgressTracker(
+                total_rows=total_rows,
+                total_bytes=total_rows * 1000,
+                operation_name="Merging Data"
+            )
+            progress_col = st.empty()
+            tracker.update(int(total_rows * 0.3))  # Start at 30%
+            with progress_col.container():
+                display_processing_progress(tracker, show_details=False)
+            time.sleep(0.1)
+        
         if merge_type == "append":
             # Simply concatenate all data
             merged = pd.concat([old_df, new_df], ignore_index=True)
+            if PROGRESS_TRACKER_AVAILABLE:
+                tracker.update(total_rows)
+                with progress_col.container():
+                    display_processing_progress(tracker, show_details=False)
+                progress_col.empty()
             return merged
         
         elif merge_type == "update":
@@ -80,6 +125,11 @@ class DataMergeManager:
                     merged = merged.sort_values(by=date_col, ascending=False)
                     # Keep first occurrence (most recent)
                     merged = merged.drop_duplicates(subset=[col for col in merged.columns if col != date_col], keep='first')
+                    if PROGRESS_TRACKER_AVAILABLE:
+                        tracker.update(total_rows)
+                        with progress_col.container():
+                            display_processing_progress(tracker, show_details=False)
+                        progress_col.empty()
                     return merged.sort_values(by=date_col)
                 except:
                     pass
