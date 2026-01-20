@@ -6,6 +6,10 @@ import streamlit as st
 from datetime import datetime
 from typing import Optional, Tuple
 import time
+import os
+import tempfile
+import pickle
+from pathlib import Path
 
 # Import progress tracker if available
 try:
@@ -13,6 +17,53 @@ try:
     PROGRESS_TRACKER_AVAILABLE = True
 except ImportError:
     PROGRESS_TRACKER_AVAILABLE = False
+
+# Import database if available
+try:
+    from sales_database import SalesDatabase
+    DATABASE_AVAILABLE = True
+except ImportError:
+    DATABASE_AVAILABLE = False
+
+# Create persistent storage directory
+CACHE_DIR = Path(tempfile.gettempdir()) / "streamlit_sales_cache"
+CACHE_DIR.mkdir(exist_ok=True)
+
+
+def save_dataframe_persistent(df: pd.DataFrame, key: str) -> bool:
+    """Save dataframe to persistent storage"""
+    try:
+        file_path = CACHE_DIR / f"{key}.pkl"
+        with open(file_path, 'wb') as f:
+            pickle.dump(df, f)
+        return True
+    except Exception as e:
+        st.error(f"Error saving data: {str(e)}")
+        return False
+
+
+def load_dataframe_persistent(key: str) -> Optional[pd.DataFrame]:
+    """Load dataframe from persistent storage"""
+    try:
+        file_path = CACHE_DIR / f"{key}.pkl"
+        if file_path.exists():
+            with open(file_path, 'rb') as f:
+                return pickle.load(f)
+    except Exception as e:
+        st.warning(f"Error loading data: {str(e)}")
+    return None
+
+
+def clear_persistent_data(key: str) -> bool:
+    """Clear persistent data for a key"""
+    try:
+        file_path = CACHE_DIR / f"{key}.pkl"
+        if file_path.exists():
+            file_path.unlink()
+        return True
+    except Exception as e:
+        st.error(f"Error clearing data: {str(e)}")
+        return False
 
 class DataMergeManager:
     """Manage multiple data uploads and merging"""
@@ -274,7 +325,7 @@ def streamlit_multi_upload_ui(data_type: str = "Sales") -> Tuple[Optional[pd.Dat
             )
             
             # Merge and save button
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             
             with col1:
                 if st.button("✅ Merge & Store Data", key=f"merge_btn_{data_type}"):
@@ -284,13 +335,37 @@ def streamlit_multi_upload_ui(data_type: str = "Sales") -> Tuple[Optional[pd.Dat
                         merge_type
                     )
                     st.session_state[session_key] = merged_data
-                    st.success(f"✅ Data merged! Total records: {len(merged_data):,}")
-                    st.balloons()
+                    
+                    # Save to database
+                    if DATABASE_AVAILABLE:
+                        db = SalesDatabase()
+                        if db.save_dataframe(merged_data, f"merged_{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
+                            st.success(f"✅ Data merged and stored! Total records: {len(merged_data):,}")
+                            st.balloons()
+                    else:
+                        st.success(f"✅ Data merged! Total records: {len(merged_data):,}")
+                        st.balloons()
             
             with col2:
                 if st.button("🔄 Replace Data", key=f"replace_btn_{data_type}"):
                     st.session_state[session_key] = new_combined
+                    
+                    # Save to database
+                    if DATABASE_AVAILABLE:
+                        db = SalesDatabase()
+                        db.save_dataframe(new_combined, f"replaced_{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                    
                     st.info(f"Data replaced. Total records: {len(new_combined):,}")
+            
+            with col3:
+                # Download button
+                csv = new_combined.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download CSV",
+                    data=csv,
+                    file_name=f"{data_type}_data_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
             
             return st.session_state[session_key], merge_type
     

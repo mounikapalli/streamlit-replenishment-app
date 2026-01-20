@@ -39,6 +39,13 @@ try:
 except ImportError:
     DATA_MERGE_AVAILABLE = False
 
+# Import sales database
+try:
+    from sales_database import SalesDatabase, streamlit_database_status, streamlit_data_management
+    DATABASE_AVAILABLE = True
+except ImportError:
+    DATABASE_AVAILABLE = False
+
 # Backend API URL
 API_URL = "http://127.0.0.1:8000"
 
@@ -2670,6 +2677,14 @@ def main():
                     st.markdown(f"🕒 {timestamp}")
                     st.markdown(f"📊 {info['rows']:,} rows × {info['columns']} cols")
                     st.markdown("---")
+        
+        # Show database status
+        if DATABASE_AVAILABLE:
+            st.markdown("---")
+            st.subheader("🗄️ Backend Database Status")
+            streamlit_database_status()
+            streamlit_data_management()
+            st.markdown("---")
         
         # File uploaders - Using new multi-upload feature with merge capability
         st.markdown("### 📥 Data Upload (Multiple Files Supported)")
