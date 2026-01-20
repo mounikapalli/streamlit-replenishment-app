@@ -2674,6 +2674,9 @@ def main():
         # File uploaders - Using new multi-upload feature with merge capability
         st.markdown("### 📥 Data Upload (Multiple Files Supported)")
         
+        # Initialize uploaded_files dictionary
+        uploaded_files = {}
+        
         # Use new data merge helper if available
         if DATA_MERGE_AVAILABLE:
             # Sales Data with multi-upload
