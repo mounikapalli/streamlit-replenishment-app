@@ -240,136 +240,159 @@ class DataMergeManager:
 
 def streamlit_multi_upload_ui(data_type: str = "Sales") -> Tuple[Optional[pd.DataFrame], str]:
     """
-    Streamlit UI for multi-file uploads with comparison
+    Streamlit UI for multi-file uploads with clear, step-by-step flow
     
     Returns:
         Tuple of (merged_dataframe, merge_type)
     """
     
-    st.subheader(f"📂 {data_type} Data Upload & Merge")
+    st.subheader(f"📂 {data_type} Data Management")
     
-    # Initialize session state for storing old data
-    session_key = f"{data_type.lower()}_old_data"
-    if session_key not in st.session_state:
-        st.session_state[session_key] = None
-    
-    # Display current stored data
-    with st.expander("📊 Current Stored Data Info", expanded=True):
-        old_data = st.session_state[session_key]
-        if old_data is not None and not old_data.empty:
-            old_summary = DataMergeManager.get_data_summary(old_data)
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Stored Rows", f"{old_summary['rows']:,}")
-            with col2:
-                st.metric("Stored Columns", old_summary['columns'])
-            with col3:
-                if "min_date" in old_summary and "max_date" in old_summary:
-                    st.metric("Date Range", f"{old_summary['min_date'].date()} to {old_summary['max_date'].date()}")
-            
-            with st.expander("View Stored Data Preview"):
-                st.dataframe(old_data.head(20), use_container_width=True)
+    # Step 1: Show current database status (from database, not session)
+    if DATABASE_AVAILABLE:
+        from sales_database import SalesDatabase
+        db = SalesDatabase()
+        summary = db._cached_get_quick_summary()
+        
+        if summary.get('total_rows', 0) > 0:
+            st.success(f"✅ **Database has {summary['total_rows']:,} rows** ({summary['min_date']} to {summary['max_date']})")
         else:
-            st.info("No data stored yet. Upload files to get started.")
+            st.info("📦 Database is empty - upload data to get started")
+        st.divider()
     
-    # Upload new files
-    st.markdown("### 📥 Add New Data Files")
+    # Step 2: Upload new files
+    st.markdown("### Step 1️⃣: Upload Files")
+    st.caption("Select one or more files to upload and merge with existing data")
+    
     uploaded_files = st.file_uploader(
-        f"Upload {data_type} files (CSV/Excel)",
+        f"Choose {data_type} files",
         type=["csv", "xlsx"],
         accept_multiple_files=True,
-        help="Upload multiple years/batches of data. They will be combined."
+        key=f"uploader_{data_type}"
     )
     
-    if uploaded_files:
-        new_data_list = []
-        
-        st.info(f"Processing {len(uploaded_files)} file(s)...")
-        
+    if not uploaded_files:
+        st.info("👆 Select files to continue")
+        return None, "append"
+    
+    # Step 3: Load files
+    st.markdown("### Step 2️⃣: Load & Combine Files")
+    
+    new_data_list = []
+    total_new_rows = 0
+    
+    with st.spinner("📂 Loading files..."):
         for uploaded_file in uploaded_files:
             df = DataMergeManager.load_file(uploaded_file)
             if df is not None:
                 new_data_list.append(df)
-                st.success(f"✓ Loaded {uploaded_file.name}: {len(df):,} rows")
-        
-        if new_data_list:
-            # Combine new files
-            if len(new_data_list) > 1:
-                new_combined = pd.concat(new_data_list, ignore_index=True)
-                st.info(f"Combined {len(new_data_list)} files: {len(new_combined):,} total rows")
-            else:
-                new_combined = new_data_list[0]
-            
-            # Show merge options
-            st.markdown("### ⚙️ Merge Options")
-            merge_type = st.radio(
-                "How to merge with existing data:",
-                options=["append", "update", "dedupe"],
-                format_func=lambda x: {
-                    "append": "📎 Append (Add all rows)",
-                    "update": "🔄 Update (Newer overwrites older)",
-                    "dedupe": "🔀 Deduplicate (Remove exact duplicates)"
-                }.get(x, x),
-                help="""
-                - **Append**: Simply add all new rows (best for yearly data)
-                - **Update**: Use newer data to overwrite older matching records
-                - **Deduplicate**: Remove any exact duplicate rows
-                """
-            )
-            
-            # Show comparison
-            DataMergeManager.display_comparison(
-                st.session_state[session_key],
-                new_combined,
-                f"{data_type} Data Comparison"
-            )
-            
-            # Merge and save button
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.button("✅ Merge & Store Data", key=f"merge_btn_{data_type}"):
-                    merged_data = DataMergeManager.merge_datasets(
-                        st.session_state[session_key],
-                        new_combined,
-                        merge_type
-                    )
-                    st.session_state[session_key] = merged_data
-                    
-                    # Save to database
-                    if DATABASE_AVAILABLE:
-                        db = SalesDatabase()
-                        if db.save_dataframe(merged_data, f"merged_{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
-                            st.success(f"✅ Data merged and stored! Total records: {len(merged_data):,}")
-                            st.balloons()
-                    else:
-                        st.success(f"✅ Data merged! Total records: {len(merged_data):,}")
-                        st.balloons()
-            
-            with col2:
-                if st.button("🔄 Replace Data", key=f"replace_btn_{data_type}"):
-                    st.session_state[session_key] = new_combined
-                    
-                    # Save to database
-                    if DATABASE_AVAILABLE:
-                        db = SalesDatabase()
-                        db.save_dataframe(new_combined, f"replaced_{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-                    
-                    st.info(f"Data replaced. Total records: {len(new_combined):,}")
-            
-            with col3:
-                # Download button
-                csv = new_combined.to_csv(index=False)
-                st.download_button(
-                    label="📥 Download CSV",
-                    data=csv,
-                    file_name=f"{data_type}_data_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                )
-            
-            return st.session_state[session_key], merge_type
+                total_new_rows += len(df)
     
-    return st.session_state[session_key], "append"
+    if not new_data_list:
+        st.error("❌ Could not load any files")
+        return None, "append"
+    
+    # Combine multiple files
+    if len(new_data_list) > 1:
+        st.info(f"✅ Loaded {len(new_data_list)} files with {total_new_rows:,} total rows")
+        new_combined = pd.concat(new_data_list, ignore_index=True)
+    else:
+        st.success(f"✅ Loaded {uploaded_files[0].name}: {len(new_data_list[0]):,} rows")
+        new_combined = new_data_list[0]
+    
+    st.divider()
+    
+    # Step 4: Choose merge option
+    st.markdown("### Step 3️⃣: Merge Strategy")
+    st.caption("How should new data be combined with existing data?")
+    
+    merge_type = st.radio(
+        "Select merge option:",
+        options=["append", "update", "dedupe"],
+        format_func=lambda x: {
+            "append": "📎 **Append** - Add all new rows to existing data",
+            "update": "🔄 **Update** - Newer data overwrites older matching records",
+            "dedupe": "🔀 **Deduplicate** - Remove exact duplicate rows"
+        }.get(x, x),
+        horizontal=False
+    )
+    
+    st.divider()
+    
+    # Step 5: Preview data
+    st.markdown("### Step 4️⃣: Data Preview")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📥 New Data (to upload)")
+        st.metric("Rows", f"{len(new_combined):,}")
+        st.metric("Columns", len(new_combined.columns))
+        with st.expander("View sample"):
+            st.dataframe(new_combined.head(10), use_container_width=True)
+    
+    with col2:
+        st.subheader("📊 What will happen")
+        if DATABASE_AVAILABLE:
+            db = SalesDatabase()
+            summary = db._cached_get_quick_summary()
+            current_rows = summary.get('total_rows', 0)
+        else:
+            current_rows = 0
+        
+        if current_rows > 0:
+            if merge_type == "append":
+                final_rows = current_rows + len(new_combined)
+                st.metric("Current rows", f"{current_rows:,}")
+                st.metric("New rows", f"+ {len(new_combined):,}")
+                st.metric("Result", f"= {final_rows:,}")
+            elif merge_type == "dedupe":
+                st.metric("Current rows", f"{current_rows:,}")
+                st.metric("New rows", f"{len(new_combined):,}")
+                st.info("Duplicates will be removed")
+            else:  # update
+                st.metric("Current rows", f"{current_rows:,}")
+                st.metric("Updated rows", f"~{len(new_combined):,}")
+                st.info("Newer data will overwrite older")
+        else:
+            st.metric("Result", f"{len(new_combined):,} rows")
+            st.caption("(First upload)")
+    
+    st.divider()
+    
+    # Step 6: Save button
+    st.markdown("### Step 5️⃣: Save to Database")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("✅ Save & Store", key=f"save_btn_{data_type}", use_container_width=True):
+            with st.spinner("💾 Saving to database..."):
+                if DATABASE_AVAILABLE:
+                    db = SalesDatabase()
+                    if db.save_dataframe(new_combined, f"{data_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
+                        st.success("✅ **SUCCESS!** Data saved to database")
+                        st.balloons()
+                    else:
+                        st.error("❌ Failed to save data")
+                else:
+                    st.error("Database not available")
+    
+    with col2:
+        csv = new_combined.to_csv(index=False)
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv,
+            file_name=f"{data_type}_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    
+    with col3:
+        if st.button("🔄 Clear", key=f"clear_btn_{data_type}", use_container_width=True):
+            st.rerun()
+    
+    return new_combined, merge_type
 
 
 def save_merged_data_to_csv(df: pd.DataFrame, filename: str = "merged_data.csv") -> bytes:
