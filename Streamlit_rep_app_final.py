@@ -32,6 +32,13 @@ MEMORY_LIMIT = 0.75  # Use max 75% of available memory
 # Suppress warnings
 warnings.filterwarnings('ignore')
 
+# Import data merge helper
+try:
+    from data_merge_helper import streamlit_multi_upload_ui, DataMergeManager
+    DATA_MERGE_AVAILABLE = True
+except ImportError:
+    DATA_MERGE_AVAILABLE = False
+
 # Backend API URL
 API_URL = "http://127.0.0.1:8000"
 
@@ -2664,15 +2671,35 @@ def main():
                     st.markdown(f"📊 {info['rows']:,} rows × {info['columns']} cols")
                     st.markdown("---")
         
-        # File uploaders
-        uploaded_files = {
-            "sales": st.file_uploader("Sales Data (CSV/Excel)", type=["csv", "xlsx"]),
-            "stock": st.file_uploader("Stock Data (CSV/Excel)", type=["csv", "xlsx"]),
-            "warehouse": st.file_uploader("Warehouse Data (CSV/Excel)", type=["csv", "xlsx"]),
-            "sku_master": st.file_uploader("SKU Master (CSV/Excel)", type=["csv", "xlsx"]),
-            "style_master": st.file_uploader("Style Master (CSV/Excel)", type=["csv", "xlsx"]),
-            "size_master": st.file_uploader("Size Master (CSV/Excel) - Required for Size Set Completion", type=["csv", "xlsx"])
-        }
+        # File uploaders - Using new multi-upload feature with merge capability
+        st.markdown("### 📥 Data Upload (Multiple Files Supported)")
+        
+        # Use new data merge helper if available
+        if DATA_MERGE_AVAILABLE:
+            # Sales Data with multi-upload
+            st.markdown("#### 📊 Sales Data (2024, 2025, 2026, etc.)")
+            sales_df, sales_merge_type = streamlit_multi_upload_ui("Sales")
+            uploaded_files["sales"] = sales_df
+            
+            st.divider()
+            
+            # Other data types with traditional upload (can be upgraded later)
+            uploaded_files["stock"] = st.file_uploader("Stock Data (CSV/Excel)", type=["csv", "xlsx"], key="stock_upload")
+            uploaded_files["warehouse"] = st.file_uploader("Warehouse Data (CSV/Excel)", type=["csv", "xlsx"], key="warehouse_upload")
+            uploaded_files["sku_master"] = st.file_uploader("SKU Master (CSV/Excel)", type=["csv", "xlsx"], key="sku_upload")
+            uploaded_files["style_master"] = st.file_uploader("Style Master (CSV/Excel)", type=["csv", "xlsx"], key="style_upload")
+            uploaded_files["size_master"] = st.file_uploader("Size Master (CSV/Excel) - Required for Size Set Completion", type=["csv", "xlsx"], key="size_upload")
+        else:
+            # Fallback to traditional uploaders
+            uploaded_files = {
+                "sales": st.file_uploader("Sales Data (CSV/Excel)", type=["csv", "xlsx"]),
+                "stock": st.file_uploader("Stock Data (CSV/Excel)", type=["csv", "xlsx"]),
+                "warehouse": st.file_uploader("Warehouse Data (CSV/Excel)", type=["csv", "xlsx"]),
+                "sku_master": st.file_uploader("SKU Master (CSV/Excel)", type=["csv", "xlsx"]),
+                "style_master": st.file_uploader("Style Master (CSV/Excel)", type=["csv", "xlsx"]),
+                "size_master": st.file_uploader("Size Master (CSV/Excel) - Required for Size Set Completion", type=["csv", "xlsx"])
+            }
+        
         st.markdown("---")
         # Toggle to enable/disable uploads to backend API (helps run app offline)
         enable_backend = st.checkbox(
