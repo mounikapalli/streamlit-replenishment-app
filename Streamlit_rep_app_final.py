@@ -51,30 +51,8 @@ API_URL = "http://127.0.0.1:8000"
 
 def upload_file_to_api(file, file_type):
     """Upload a file to the backend API"""
-    # Allow skipping backend uploads via Streamlit toggle (useful for offline/testing)
-    try:
-        if not st.session_state.get('enable_backend_uploads', True):
-            # Skip upload when disabled (return a marker that upload was skipped)
-            st.info(f"Backend uploads disabled — skipping upload for {file_type}.")
-            return {"skipped": True}
-    except Exception:
-        # st may not be available at import-time; ignore and continue
-        pass
-
-    try:
-        files = {"file": file}
-        response = requests.post(
-            f"{API_URL}/upload/{file_type}",
-            files=files
-        )
-        if response.status_code == 200:
-            return response.json()
-        else:
-            st.error(f"Error uploading {file_type}: {response.text}")
-            return None
-    except requests.exceptions.ConnectionError:
-        st.error("Cannot connect to the backend server. Please ensure it's running.")
-        return None
+    # Disable backend API uploads on Streamlit Cloud - use database instead
+    return {"skipped": True, "reason": "Using SQLite database instead"}
 
 def get_latest_upload(file_type):
     """Get the latest uploaded data for a specific file type"""
@@ -2719,14 +2697,8 @@ def main():
             }
         
         st.markdown("---")
-        # Toggle to enable/disable uploads to backend API (helps run app offline)
-        enable_backend = st.checkbox(
-            "Enable backend uploads",
-            value=False,
-            help="Toggle to upload files to backend API. Turn off to run analysis locally without attempting uploads."
-        )
-        # Persist the setting in session state for upload_file_to_api to read
-        st.session_state['enable_backend_uploads'] = enable_backend
+        # Backend uploads now handled by SQLite database
+        st.info("💾 Data is automatically saved to SQLite database backend")
         
         st.markdown("---")
         st.markdown("### ⚙️ Replenishment Settings")
