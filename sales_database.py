@@ -18,6 +18,30 @@ DB_DIR.mkdir(exist_ok=True)
 DB_FILE = DB_DIR / "sales_data.db"
 
 
+# Caching decorator for database operations
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def _cached_load_all_data():
+    """Cached version of loading all data"""
+    db = SalesDatabase()
+    try:
+        conn = db.get_connection()
+        df = pd.read_sql_query("SELECT * FROM sales_data ORDER BY date DESC", conn)
+        conn.close()
+        if df.empty:
+            return None
+        return df
+    except Exception as e:
+        logger.error(f"Error loading data: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=3600)
+def _cached_get_data_summary():
+    """Cached version of getting summary"""
+    db = SalesDatabase()
+    return db.get_data_summary()
+
+
 class SalesDatabase:
     """Manage SQLite database for sales data"""
     
@@ -158,20 +182,8 @@ class SalesDatabase:
             return False
     
     def load_all_data(self) -> Optional[pd.DataFrame]:
-        """Load all data from database"""
-        try:
-            conn = self.get_connection()
-            df = pd.read_sql_query("SELECT * FROM sales_data ORDER BY date DESC", conn)
-            conn.close()
-            
-            if df.empty:
-                return None
-            
-            return df
-            
-        except Exception as e:
-            logger.error(f"Error loading data: {str(e)}")
-            return None
+        """Load all data from database (uses cache)"""
+        return _cached_load_all_data()
     
     def load_data_by_year(self, year: int) -> Optional[pd.DataFrame]:
         """Load data for specific year"""
@@ -214,44 +226,8 @@ class SalesDatabase:
             return None
     
     def get_data_summary(self) -> dict:
-        """Get summary statistics of stored data"""
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT COUNT(*) FROM sales_data")
-            total_rows = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(DISTINCT store) FROM sales_data")
-            total_stores = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(DISTINCT sku) FROM sales_data")
-            total_skus = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT MIN(date), MAX(date) FROM sales_data")
-            date_range = cursor.fetchone()
-            
-            cursor.execute("SELECT SUM(quantity) FROM sales_data")
-            total_quantity = cursor.fetchone()[0] or 0
-            
-            cursor.execute("SELECT SUM(amount) FROM sales_data")
-            total_amount = cursor.fetchone()[0] or 0
-            
-            conn.close()
-            
-            return {
-                "total_rows": total_rows,
-                "total_stores": total_stores,
-                "total_skus": total_skus,
-                "min_date": date_range[0],
-                "max_date": date_range[1],
-                "total_quantity": total_quantity,
-                "total_amount": total_amount
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting summary: {str(e)}")
-            return {}
+        """Get summary statistics of stored data (uses cache)"""
+        return _cached_get_data_summary()
     
     def get_upload_history(self, limit: int = 10) -> List[dict]:
         """Get upload history"""

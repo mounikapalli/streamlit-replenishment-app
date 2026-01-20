@@ -2785,6 +2785,11 @@ def main():
     
     # Process each uploaded file (only update the ones that were uploaded)
     for file_type, uploaded_file in uploaded_files.items():
+        # Skip if it's a DataFrame (from multi-upload UI) or None
+        if isinstance(uploaded_file, pd.DataFrame) or uploaded_file is None:
+            continue
+            
+        # Process file uploader objects only
         if uploaded_file:
             # Read file first
             raw_df = read_file(uploaded_file)
